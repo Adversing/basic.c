@@ -15,7 +15,7 @@
 #define MAX_GOSUB_STACK 100
 #define MAX_INPUT_LENGTH 256
 
-typedef enum {
+typedef enum token_type_t {
     TOKEN_NUMBER,
     TOKEN_STRING,
     TOKEN_VARIABLE,
@@ -27,7 +27,7 @@ typedef enum {
     TOKEN_ERROR
 } TokenType;
 
-typedef enum {
+typedef enum command_t {
     CMD_PRINT,
     CMD_LET,
     CMD_INPUT,
@@ -57,7 +57,7 @@ typedef enum {
     CMD_UNKNOWN
 } Command;
 
-typedef enum {
+typedef enum operator_t {
     OP_PLUS,
     OP_MINUS,
     OP_MULTIPLY,
@@ -77,7 +77,7 @@ typedef enum {
     OP_UNKNOWN
 } Operator;
 
-typedef enum {
+typedef enum function_t {
     FUNC_ABS,
     FUNC_SIN,
     FUNC_COS,
@@ -96,20 +96,20 @@ typedef enum {
     FUNC_UNKNOWN
 } Function;
 
-typedef enum {
+typedef enum value_type_t {
     VALUE_NUMBER,
     VALUE_STRING
 } ValueType;
 
-typedef struct {
+typedef struct value_t {
     ValueType type;
-    union {
+    union data_u {
         double number;
         char *string;
     } data;
 } Value;
 
-typedef struct {
+typedef struct variable_t {
     char name[32];
     Value value;
     int is_array;
@@ -118,7 +118,7 @@ typedef struct {
     Value *array_data;
 } Variable;
 
-typedef struct {
+typedef struct token_t {
     TokenType type;
     char *text;
     Value value;
@@ -127,14 +127,14 @@ typedef struct {
     Function function;
 } Token;
 
-typedef struct {
+typedef struct line_t {
     int line_number;
     char *text;
     Token *tokens;
     int token_count;
 } Line;
 
-typedef struct {
+typedef struct for_stack_t {
     char variable[32];
     double start;
     double end;
@@ -142,11 +142,11 @@ typedef struct {
     int line_index;
 } ForLoop;
 
-typedef struct {
+typedef struct gosub_stack_t {
     int return_line;
 } GosubStack;
 
-typedef struct {
+typedef struct interpreter_t {
     Line lines[MAX_LINES];
     int line_count;
     Variable variables[MAX_VARIABLES];
