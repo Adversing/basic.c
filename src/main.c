@@ -46,41 +46,65 @@ void interactive_mode() {
         char *newline = strchr(input, '\n');
         if (newline) *newline = '\0';
         
-        if (strcasecmp(input, "QUIT") == 0 || strcasecmp(input, "EXIT") == 0) {
+        char *trimmed = input;
+        while (isspace(*trimmed)) trimmed++;
+        if (!*trimmed) continue;
+        
+        if (strcasecmp(trimmed, "QUIT") == 0 || strcasecmp(trimmed, "EXIT") == 0) {
             break;
-        } else if (strcasecmp(input, "HELP") == 0) {
+        } else if (strcasecmp(trimmed, "HELP") == 0) {
             print_usage();
             continue;
-        } else if (strcasecmp(input, "RUN") == 0) {
+        } else if (strcasecmp(trimmed, "RUN") == 0) {
             if (interp.line_count == 0) {
                 printf("No program loaded. Use 'NEW' to clear and start fresh.\n");
                 continue;
             }
 
             printf("Running program...\n");
-            execute_program(&interp);
-            continue;
-        } else if (strcasecmp(input, "LIST") == 0) {
-            for (int i = 0; i < interp.line_count; i++) {
-                printf("%d %s\n", interp.lines[i].line_number, interp.lines[i].text);
+            if (!execute_program(&interp)) {
+                printf("Program execution failed\n");
             }
             continue;
-        } else if (strcasecmp(input, "NEW") == 0) {
+        } else if (strcasecmp(trimmed, "LIST") == 0) {
+            if (interp.line_count == 0) {
+                printf("No program loaded\n");
+            } else {
+                for (int i = 0; i < interp.line_count; i++) {
+                    printf("%d %s\n", interp.lines[i].line_number, 
+                           interp.lines[i].text ? interp.lines[i].text : "");
+                }
+            }
+            continue;
+        } else if (strcasecmp(trimmed, "NEW") == 0) {
             cleanup_interpreter(&interp);
             init_interpreter(&interp);
             printf("Program cleared\n");
             continue;
         }
         
-        if (!isdigit(input[0])) {
-            Interpreter temp_interp = interp;
-            if (parse_line(&temp_interp, input) && temp_interp.line_count > interp.line_count) {
-                Line *line = &temp_interp.lines[temp_interp.line_count - 1];
-                execute_line_tokens(&interp, line->tokens, line->token_count, 0);
+        if (!isdigit(trimmed[0])) {
+            int token_count;
+            Token *tokens = tokenize(trimmed, &token_count);
+            if (tokens && token_count > 0) {
+                if (!execute_line_tokens(&interp, tokens, token_count, 0)) {
+                    printf("Error executing command\n");
+                }
+                
+                for (int i = 0; i < token_count; i++) {
+                    if (tokens[i].text) {
+                        free(tokens[i].text);
+                    }
+                    cleanup_value(&tokens[i].value);
+                }
+                free(tokens);
+            } else {
+                printf("Syntax error\n");
             }
         } else {
-            if (!parse_line(&interp, input)) {
+            if (!parse_line(&interp, trimmed)) {
                 printf("Syntax error\n");
+                continue;
             }
             
             for (int i = 0; i < interp.line_count - 1; i++) {

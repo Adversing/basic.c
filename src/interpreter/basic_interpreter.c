@@ -1,6 +1,8 @@
 #include "basic_interpreter.h"
 
 void init_interpreter(Interpreter *interp) {
+    if (!interp) return;
+    
     interp->line_count = 0;
     interp->variable_count = 0;
     interp->current_line = 0;
@@ -13,34 +15,52 @@ void init_interpreter(Interpreter *interp) {
 }
 
 void cleanup_interpreter(Interpreter *interp) {
+    if (!interp) return;
+    
     for (int i = 0; i < interp->line_count; i++) {
         if (interp->lines[i].text) {
             free(interp->lines[i].text);
+            interp->lines[i].text = NULL;
         }
         if (interp->lines[i].tokens) {
             for (int j = 0; j < interp->lines[i].token_count; j++) {
                 if (interp->lines[i].tokens[j].text) {
                     free(interp->lines[i].tokens[j].text);
+                    interp->lines[i].tokens[j].text = NULL;
                 }
                 cleanup_value(&interp->lines[i].tokens[j].value);
             }
             free(interp->lines[i].tokens);
+            interp->lines[i].tokens = NULL;
         }
+        interp->lines[i].token_count = 0;
     }
 
     for (int i = 0; i < interp->variable_count; i++) {
         cleanup_value(&interp->variables[i].value);
         if (interp->variables[i].is_array && interp->variables[i].array_data) {
+            for (int j = 0; j < interp->variables[i].dimensions; j++) {
+                cleanup_value(&interp->variables[i].array_data[j]);
+            }
             free(interp->variables[i].array_data);
-            free(interp->variables[i].dim_sizes);
+            interp->variables[i].array_data = NULL;
+            if (interp->variables[i].dim_sizes) {
+                free(interp->variables[i].dim_sizes);
+                interp->variables[i].dim_sizes = NULL;
+            }
         }
     }
 
     for (int i = 0; i < interp->data_count; i++) {
         if (interp->data_values[i]) {
             free(interp->data_values[i]);
+            interp->data_values[i] = NULL;
         }
     }
+    
+    interp->line_count = 0;
+    interp->variable_count = 0;
+    interp->data_count = 0;
 }
 
 Value create_number_value(double number) {
@@ -53,19 +73,36 @@ Value create_number_value(double number) {
 Value create_string_value(const char *string) {
     Value val;
     val.type = VALUE_STRING;
-    val.data.string = malloc(strlen(string) + 1);
-    strcpy(val.data.string, string);
+    if (string && strlen(string) > 0) {
+        val.data.string = malloc(strlen(string) + 1);
+        if (val.data.string) {
+            strcpy(val.data.string, string);
+        } else {
+            val.data.string = NULL;
+        }
+    } else {
+        val.data.string = malloc(1);
+        if (val.data.string) {
+            val.data.string[0] = '\0';
+        }
+    }
     return val;
 }
 
 void cleanup_value(Value *value) {
+    if (!value) return;
+    
     if (value->type == VALUE_STRING && value->data.string) {
         free(value->data.string);
         value->data.string = NULL;
     }
+    value->type = VALUE_NUMBER;
+    value->data.number = 0;
 }
 
 Command get_command(const char *text) {
+    if (!text) return CMD_UNKNOWN;
+    
     if (strcasecmp(text, "PRINT") == 0) return CMD_PRINT;
     if (strcasecmp(text, "LET") == 0) return CMD_LET;
     if (strcasecmp(text, "INPUT") == 0) return CMD_INPUT;
@@ -96,6 +133,8 @@ Command get_command(const char *text) {
 }
 
 Operator get_operator(const char *text) {
+    if (!text) return OP_UNKNOWN;
+    
     if (strcmp(text, "+") == 0) return OP_PLUS;
     if (strcmp(text, "-") == 0) return OP_MINUS;
     if (strcmp(text, "*") == 0) return OP_MULTIPLY;
@@ -115,6 +154,8 @@ Operator get_operator(const char *text) {
 }
 
 Function get_function(const char *text) {
+    if (!text) return FUNC_UNKNOWN;
+    
     if (strcasecmp(text, "ABS") == 0) return FUNC_ABS;
     if (strcasecmp(text, "SIN") == 0) return FUNC_SIN;
     if (strcasecmp(text, "COS") == 0) return FUNC_COS;
@@ -134,6 +175,8 @@ Function get_function(const char *text) {
 }
 
 Variable *get_variable(Interpreter *interp, const char *name) {
+    if (!interp || !name) return NULL;
+    
     for (int i = 0; i < interp->variable_count; i++) {
         if (strcasecmp(interp->variables[i].name, name) == 0) {
             return &interp->variables[i];
@@ -143,13 +186,16 @@ Variable *get_variable(Interpreter *interp, const char *name) {
 }
 
 Variable *create_variable(Interpreter *interp, const char *name) {
+    if (!interp || !name) return NULL;
+    
     if (interp->variable_count >= MAX_VARIABLES) {
         print_error(interp, "Too many variables");
         return NULL;
     }
 
     Variable *var = &interp->variables[interp->variable_count++];
-    strcpy(var->name, name);
+    strncpy(var->name, name, sizeof(var->name) - 1);
+    var->name[sizeof(var->name) - 1] = '\0';
     var->value = create_number_value(0);
     var->is_array = 0;
     var->dimensions = 0;
@@ -160,6 +206,8 @@ Variable *create_variable(Interpreter *interp, const char *name) {
 }
 
 void set_variable(Interpreter *interp, const char *name, Value value) {
+    if (!interp || !name) return;
+    
     Variable *var = get_variable(interp, name);
     if (!var) {
         var = create_variable(interp, name);
@@ -171,6 +219,8 @@ void set_variable(Interpreter *interp, const char *name, Value value) {
 }
 
 void print_error(Interpreter *interp, const char *message) {
+    if (!interp || !message) return;
+    
     snprintf(interp->error_message, sizeof(interp->error_message),
              "Error at line %d: %s",
              interp->current_line > 0 ? interp->lines[interp->current_line - 1].line_number : 0,
@@ -179,6 +229,8 @@ void print_error(Interpreter *interp, const char *message) {
 }
 
 int find_line_by_number(Interpreter *interp, int line_number) {
+    if (!interp) return -1;
+    
     for (int i = 0; i < interp->line_count; i++) {
         if (interp->lines[i].line_number == line_number) {
             return i;

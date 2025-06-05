@@ -1,6 +1,10 @@
 #include "interpreter/basic_interpreter.h"
 
 int parse_line(Interpreter *interp, const char *line_text) {
+    if (!interp || !line_text) {
+        return 0;
+    }
+
     if (interp->line_count >= MAX_LINES) {
         print_error(interp, "Too many lines");
         return 0;
@@ -21,19 +25,36 @@ int parse_line(Interpreter *interp, const char *line_text) {
         line->line_number = interp->line_count * 10 + 10;
     }
 
-    line->text = malloc(strlen(ptr) + 1);
+    // allocate and copy text
+    size_t text_len = strlen(ptr);
+    line->text = malloc(text_len + 1);
+    if (!line->text) {
+        print_error(interp, "Memory allocation failed");
+        return 0;
+    }
     strcpy(line->text, ptr);
 
+    // tokenize the line
     line->tokens = tokenize(ptr, &line->token_count);
+    if (!line->tokens && line->token_count > 0) {
+        free(line->text);
+        line->text = NULL;
+        print_error(interp, "Tokenization failed");
+        return 0;
+    }
 
     interp->line_count++;
     return 1;
 }
 
 int execute_print(Interpreter *interp, Token *tokens, int token_count, int start) {
+    if (!interp || !tokens) {
+        return 0;
+    }
+
     if (start >= token_count) {
         printf("\n");
-        return 0;
+        return 1;
     }
 
     int i = start;
@@ -58,7 +79,7 @@ int execute_print(Interpreter *interp, Token *tokens, int token_count, int start
             Value result = evaluate_expression(interp, tokens, i, expr_end - 1);
             if (result.type == VALUE_NUMBER) {
                 printf("%.6g", result.data.number);
-            } else if (result.type == VALUE_STRING) {
+            } else if (result.type == VALUE_STRING && result.data.string) {
                 printf("%s", result.data.string);
             }
             cleanup_value(&result);
@@ -82,9 +103,20 @@ int execute_print(Interpreter *interp, Token *tokens, int token_count, int start
 }
 
 int execute_let(Interpreter *interp, Token *tokens, int token_count, int start) {
-    if (start + 2 >= token_count || tokens[start].type != TOKEN_VARIABLE ||
-        tokens[start + 1].type != TOKEN_OPERATOR || tokens[start + 1].operator != OP_EQUAL) {
+    if (!interp || !tokens || start + 2 >= token_count) {
         print_error(interp, "Invalid LET statement");
+        return 0;
+    }
+
+    if (tokens[start].type != TOKEN_VARIABLE ||
+        tokens[start + 1].type != TOKEN_OPERATOR || 
+        tokens[start + 1].operator != OP_EQUAL) {
+        print_error(interp, "Invalid LET statement");
+        return 0;
+    }
+
+    if (!tokens[start].text) {
+        print_error(interp, "Invalid variable name");
         return 0;
     }
 
@@ -96,12 +128,18 @@ int execute_let(Interpreter *interp, Token *tokens, int token_count, int start) 
 }
 
 int execute_input(Interpreter *interp, Token *tokens, int token_count, int start) {
+    if (!interp || !tokens) {
+        return 0;
+    }
+
     char input_buffer[MAX_INPUT_LENGTH];
 
     // check prompt as char*
     int var_start = start;
     if (start < token_count && tokens[start].type == TOKEN_STRING) {
-        printf("%s", tokens[start].value.data.string);
+        if (tokens[start].value.data.string) {
+            printf("%s", tokens[start].value.data.string);
+        }
         var_start = start + 1;
         if (var_start < token_count && tokens[var_start].type == TOKEN_DELIMITER &&
             strcmp(tokens[var_start].text, ";") == 0) {
@@ -111,6 +149,11 @@ int execute_input(Interpreter *interp, Token *tokens, int token_count, int start
 
     if (var_start >= token_count || tokens[var_start].type != TOKEN_VARIABLE) {
         print_error(interp, "INPUT requires a variable");
+        return 0;
+    }
+
+    if (!tokens[var_start].text) {
+        print_error(interp, "Invalid variable name");
         return 0;
     }
 
@@ -128,7 +171,7 @@ int execute_input(Interpreter *interp, Token *tokens, int token_count, int start
             // valid number found
             value = create_number_value(num);
         } else {
-            // it's a string
+            // treat as string
             value = create_string_value(input_buffer);
         }
 
@@ -139,6 +182,10 @@ int execute_input(Interpreter *interp, Token *tokens, int token_count, int start
 }
 
 int execute_if(Interpreter *interp, Token *tokens, int token_count, int start) {
+    if (!interp || !tokens) {
+        return 0;
+    }
+
     int then_pos = -1;
     for (int i = start; i < token_count; i++) {
         if (tokens[i].type == TOKEN_COMMAND && tokens[i].command == CMD_THEN) {
@@ -157,7 +204,7 @@ int execute_if(Interpreter *interp, Token *tokens, int token_count, int start) {
     cleanup_value(&condition);
 
     if (is_true) {
-        // THEN exec
+        // execute THEN clause
         if (then_pos + 1 < token_count) {
             if (tokens[then_pos + 1].type == TOKEN_NUMBER) {
                 // GOTO line number
@@ -170,7 +217,7 @@ int execute_if(Interpreter *interp, Token *tokens, int token_count, int start) {
                     return 0;
                 }
             } else {
-                // exec remaining tokens as a statement
+                // execute remaining tokens as a statement
                 return execute_line_tokens(interp, tokens, token_count, then_pos + 1);
             }
         }
@@ -180,9 +227,20 @@ int execute_if(Interpreter *interp, Token *tokens, int token_count, int start) {
 }
 
 int execute_for(Interpreter *interp, Token *tokens, int token_count, int start) {
-    if (start + 4 >= token_count || tokens[start].type != TOKEN_VARIABLE ||
-        tokens[start + 1].type != TOKEN_OPERATOR || tokens[start + 1].operator != OP_EQUAL) {
+    if (!interp || !tokens || start + 4 >= token_count) {
         print_error(interp, "Invalid FOR statement");
+        return 0;
+    }
+
+    if (tokens[start].type != TOKEN_VARIABLE ||
+        tokens[start + 1].type != TOKEN_OPERATOR || 
+        tokens[start + 1].operator != OP_EQUAL) {
+        print_error(interp, "Invalid FOR statement");
+        return 0;
+    }
+
+    if (!tokens[start].text) {
+        print_error(interp, "Invalid variable name");
         return 0;
     }
 
@@ -241,6 +299,7 @@ int execute_for(Interpreter *interp, Token *tokens, int token_count, int start) 
         cleanup_value(&step_val);
     }
 
+    // set initial variable value
     set_variable(interp, var_name, start_val);
 
     // push onto FOR stack
@@ -252,7 +311,8 @@ int execute_for(Interpreter *interp, Token *tokens, int token_count, int start) 
     }
 
     ForLoop *loop = &interp->for_stack[++interp->for_stack_top];
-    strcpy(loop->variable, var_name);
+    strncpy(loop->variable, var_name, sizeof(loop->variable) - 1);
+    loop->variable[sizeof(loop->variable) - 1] = '\0';
     loop->start = start_val.data.number;
     loop->end = end_val.data.number;
     loop->step = step;
@@ -264,7 +324,7 @@ int execute_for(Interpreter *interp, Token *tokens, int token_count, int start) 
 }
 
 int execute_next(Interpreter *interp) {
-    if (interp->for_stack_top < 0) {
+    if (!interp || interp->for_stack_top < 0) {
         print_error(interp, "NEXT without FOR");
         return 0;
     }
@@ -300,7 +360,7 @@ int execute_next(Interpreter *interp) {
 }
 
 int execute_line_tokens(Interpreter *interp, Token *tokens, int token_count, int start) {
-    if (start >= token_count) return 1;
+    if (!interp || !tokens || start >= token_count) return 1;
 
     Token *token = &tokens[start];
 
@@ -387,15 +447,23 @@ int execute_line_tokens(Interpreter *interp, Token *tokens, int token_count, int
 }
 
 int execute_line(Interpreter *interp, int line_index) {
-    if (line_index < 0 || line_index >= interp->line_count) {
+    if (!interp || line_index < 0 || line_index >= interp->line_count) {
         return 0;
     }
 
     Line *line = &interp->lines[line_index];
+    if (!line->tokens || line->token_count <= 0) {
+        return 1; // empty line
+    }
+
     return execute_line_tokens(interp, line->tokens, line->token_count, 0);
 }
 
 int execute_program(Interpreter *interp) {
+    if (!interp) {
+        return 0;
+    }
+
     interp->running = 1;
     interp->current_line = 0;
 
@@ -410,6 +478,10 @@ int execute_program(Interpreter *interp) {
 }
 
 int load_program(Interpreter *interp, const char *filename) {
+    if (!interp || !filename) {
+        return 0;
+    }
+
     FILE *file = fopen(filename, "r");
     if (!file) {
         printf("Error: Cannot open file %s\n", filename);
@@ -426,7 +498,7 @@ int load_program(Interpreter *interp, const char *filename) {
 
     fclose(file);
 
-    // lines sorting
+    // sort lines by line number (bubble sort)
     for (int i = 0; i < interp->line_count - 1; i++) {
         for (int j = i + 1; j < interp->line_count; j++) {
             if (interp->lines[i].line_number > interp->lines[j].line_number) {

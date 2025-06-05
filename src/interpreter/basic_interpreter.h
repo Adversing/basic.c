@@ -170,18 +170,19 @@ int parse_line(Interpreter *interp, const char *line_text);
 int execute_program(Interpreter *interp);
 int execute_line(Interpreter *interp, int line_index);
 Token *tokenize(const char *text, int *token_count);
+void cleanup_tokens(Token *tokens, int token_count);
 Value evaluate_expression(Interpreter *interp, Token *tokens, int start, int end);
 Variable *get_variable(Interpreter *interp, const char *name);
 Variable *create_variable(Interpreter *interp, const char *name);
 void set_variable(Interpreter *interp, const char *name, Value value);
-void print_error(Interpreter *interp, const char *message);
-void cleanup_value(Value *value);
 Value create_number_value(double number);
 Value create_string_value(const char *string);
+void cleanup_value(Value *value);
 Command get_command(const char *text);
 Operator get_operator(const char *text);
 Function get_function(const char *text);
 int find_line_by_number(Interpreter *interp, int line_number);
+void print_error(Interpreter *interp, const char *message);
 int execute_line_tokens(Interpreter *interp, Token *token, int token_count, int i);
 
 #endif

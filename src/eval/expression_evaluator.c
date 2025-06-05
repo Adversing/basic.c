@@ -24,23 +24,42 @@ int get_precedence(const Operator op) {
 Value apply_operator(Interpreter *interp, Value left, Operator op, Value right) {
     Value result = create_number_value(0);
 
+    if (left.type == VALUE_STRING && !left.data.string) {
+        cleanup_value(&left);
+        cleanup_value(&right);
+        print_error(interp, "Invalid string value");
+        return result;
+    }
+    if (right.type == VALUE_STRING && !right.data.string) {
+        cleanup_value(&left);
+        cleanup_value(&right);
+        print_error(interp, "Invalid string value");
+        return result;
+    }
+
     // string ops
     if (left.type == VALUE_STRING || right.type == VALUE_STRING) {
-        if (op == OP_PLUS) {
+        if (op == OP_PLUS && left.type == VALUE_STRING && right.type == VALUE_STRING) {
             // "str1" + "str2"
-            char *concat = malloc(strlen(left.data.string) + strlen(right.data.string) + 1);
-            strcpy(concat, left.data.string);
-            strcat(concat, right.data.string);
-            result = create_string_value(concat);
-            free(concat);
-            return result;
-        }
-        if (op == OP_EQUAL) {
+            size_t left_len = strlen(left.data.string);
+            size_t right_len = strlen(right.data.string);
+            char *concat = malloc(left_len + right_len + 1);
+            if (concat) {
+                strcpy(concat, left.data.string);
+                strcat(concat, right.data.string);
+                result = create_string_value(concat);
+                free(concat);
+            } else {
+                print_error(interp, "Memory allocation failed");
+            }
+        } else if (op == OP_EQUAL && left.type == VALUE_STRING && right.type == VALUE_STRING) {
             // "str1" = "str2"
             result.data.number = strcmp(left.data.string, right.data.string) == 0 ? 1 : 0;
-            return result;
+        } else {
+            print_error(interp, "Invalid string operation");
         }
-        print_error(interp, "Invalid string operation");
+        cleanup_value(&left);
+        cleanup_value(&right);
         return result;
     }
 
@@ -61,6 +80,8 @@ Value apply_operator(Interpreter *interp, Value left, Operator op, Value right) 
         case OP_DIVIDE: // a / b
             if (r == 0) {
                 print_error(interp, "Division by zero");
+                cleanup_value(&left);
+                cleanup_value(&right);
                 return result;
             }
             result.data.number = l / r;
@@ -71,6 +92,8 @@ Value apply_operator(Interpreter *interp, Value left, Operator op, Value right) 
         case OP_MOD: // a MOD b
             if (r == 0) {
                 print_error(interp, "Division by zero in MOD");
+                cleanup_value(&left);
+                cleanup_value(&right);
                 return result;
             }
             result.data.number = fmod(l, r);
@@ -104,6 +127,8 @@ Value apply_operator(Interpreter *interp, Value left, Operator op, Value right) 
             break;
     }
 
+    cleanup_value(&left);
+    cleanup_value(&right);
     return result;
 }
 
@@ -114,7 +139,7 @@ Value apply_function(Interpreter *interp, Function func, Value *args, int arg_co
         case FUNC_ABS:
             if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
                 print_error(interp, "ABS requires one numeric argument");
-                return result;
+                goto cleanup_args;
             }
             result.data.number = fabs(args[0].data.number);
             break;
@@ -122,7 +147,7 @@ Value apply_function(Interpreter *interp, Function func, Value *args, int arg_co
         case FUNC_SIN:
             if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
                 print_error(interp, "SIN requires one numeric argument");
-                return result;
+                goto cleanup_args;
             }
             result.data.number = sin(args[0].data.number);
             break;
@@ -130,7 +155,7 @@ Value apply_function(Interpreter *interp, Function func, Value *args, int arg_co
         case FUNC_COS:
             if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
                 print_error(interp, "COS requires one numeric argument");
-                return result;
+                goto cleanup_args;
             }
             result.data.number = cos(args[0].data.number);
             break;
@@ -138,7 +163,7 @@ Value apply_function(Interpreter *interp, Function func, Value *args, int arg_co
         case FUNC_TAN:
             if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
                 print_error(interp, "TAN requires one numeric argument");
-                return result;
+                goto cleanup_args;
             }
             result.data.number = tan(args[0].data.number);
             break;
@@ -146,11 +171,11 @@ Value apply_function(Interpreter *interp, Function func, Value *args, int arg_co
         case FUNC_SQR:
             if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
                 print_error(interp, "SQR requires one numeric argument");
-                return result;
+                goto cleanup_args;
             }
             if (args[0].data.number < 0) {
                 print_error(interp, "SQR of negative number");
-                return result;
+                goto cleanup_args;
             }
             result.data.number = sqrt(args[0].data.number);
             break;
@@ -158,7 +183,7 @@ Value apply_function(Interpreter *interp, Function func, Value *args, int arg_co
         case FUNC_INT:
             if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
                 print_error(interp, "INT requires one numeric argument");
-                return result;
+                goto cleanup_args;
             }
             result.data.number = floor(args[0].data.number);
             break;
@@ -170,7 +195,11 @@ Value apply_function(Interpreter *interp, Function func, Value *args, int arg_co
         case FUNC_LEN:
             if (arg_count != 1 || args[0].type != VALUE_STRING) {
                 print_error(interp, "LEN requires one string argument");
-                return result;
+                goto cleanup_args;
+            }
+            if (!args[0].data.string) {
+                print_error(interp, "Invalid string argument");
+                goto cleanup_args;
             }
             result.data.number = strlen(args[0].data.string);
             break;
@@ -178,7 +207,11 @@ Value apply_function(Interpreter *interp, Function func, Value *args, int arg_co
         case FUNC_VAL:
             if (arg_count != 1 || args[0].type != VALUE_STRING) {
                 print_error(interp, "VAL requires one string argument");
-                return result;
+                goto cleanup_args;
+            }
+            if (!args[0].data.string) {
+                print_error(interp, "Invalid string argument");
+                goto cleanup_args;
             }
             result.data.number = atof(args[0].data.string);
             break;
@@ -186,17 +219,21 @@ Value apply_function(Interpreter *interp, Function func, Value *args, int arg_co
         case FUNC_STR:
             if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
                 print_error(interp, "STR$ requires one numeric argument");
-                return result;
+                goto cleanup_args;
             }
-            char str_buffer[50];
-            sprintf(str_buffer, "%.6g", args[0].data.number);
+            char str_buffer[100];
+            snprintf(str_buffer, sizeof(str_buffer), "%.6g", args[0].data.number);
             result = create_string_value(str_buffer);
             break;
 
         case FUNC_CHR:
             if (arg_count != 1 || args[0].type != VALUE_NUMBER) {
                 print_error(interp, "CHR$ requires one numeric argument");
-                return result;
+                goto cleanup_args;
+            }
+            if (args[0].data.number < 0 || args[0].data.number > 255) {
+                print_error(interp, "CHR$ argument out of range");
+                goto cleanup_args;
             }
             char chr_buffer[2];
             chr_buffer[0] = (char)args[0].data.number;
@@ -207,11 +244,11 @@ Value apply_function(Interpreter *interp, Function func, Value *args, int arg_co
         case FUNC_ASC:
             if (arg_count != 1 || args[0].type != VALUE_STRING) {
                 print_error(interp, "ASC requires one string argument");
-                return result;
+                goto cleanup_args;
             }
-            if (strlen(args[0].data.string) == 0) {
+            if (!args[0].data.string || strlen(args[0].data.string) == 0) {
                 print_error(interp, "ASC of empty string");
-                return result;
+                goto cleanup_args;
             }
             result.data.number = (double)args[0].data.string[0];
             break;
@@ -221,13 +258,17 @@ Value apply_function(Interpreter *interp, Function func, Value *args, int arg_co
             break;
     }
 
+cleanup_args:
+    for (int i = 0; i < arg_count; i++) {
+        cleanup_value(&args[i]);
+    }
     return result;
 }
 
 Value evaluate_expression(Interpreter *interp, Token *tokens, int start, int end) {
     Value result = create_number_value(0);
 
-    if (start > end) {
+    if (!tokens || start > end || start < 0) {
         return result;
     }
 
@@ -235,15 +276,26 @@ Value evaluate_expression(Interpreter *interp, Token *tokens, int start, int end
         const Token *token = &tokens[start];
         switch (token->type) {
             case TOKEN_NUMBER:
+                if (token->value.type == VALUE_NUMBER) {
+                    return create_number_value(token->value.data.number);
+                }
+                break;
             case TOKEN_STRING:
-                return token->value;
+                if (token->value.type == VALUE_STRING && token->value.data.string) {
+                    return create_string_value(token->value.data.string);
+                }
+                break;
             case TOKEN_VARIABLE: {
                 Variable *var = get_variable(interp, token->text);
                 if (!var) {
                     print_error(interp, "Undefined variable");
                     return result;
                 }
-                return var->value;
+                if (var->value.type == VALUE_STRING && var->value.data.string) {
+                    return create_string_value(var->value.data.string);
+                } else {
+                    return create_number_value(var->value.data.number);
+                }
             }
             default:
                 print_error(interp, "Invalid expression");
@@ -307,7 +359,7 @@ Value evaluate_expression(Interpreter *interp, Token *tokens, int start, int end
                     paren_level++;
                 } else if (tokens[i].type == TOKEN_DELIMITER && strcmp(tokens[i].text, ")") == 0) {
                     if (paren_level == 0) {
-                        if (arg_end >= arg_start) {
+                        if (arg_end > arg_start && arg_count < 10) {
                             args[arg_count++] = evaluate_expression(interp, tokens, arg_start, arg_end - 1);
                         }
                         break;
@@ -315,7 +367,9 @@ Value evaluate_expression(Interpreter *interp, Token *tokens, int start, int end
                     paren_level--;
                 } else if (paren_level == 0 && tokens[i].type == TOKEN_DELIMITER &&
                           strcmp(tokens[i].text, ",") == 0) {
-                    args[arg_count++] = evaluate_expression(interp, tokens, arg_start, arg_end - 1);
+                    if (arg_count < 10) {
+                        args[arg_count++] = evaluate_expression(interp, tokens, arg_start, arg_end - 1);
+                    }
                     arg_start = i + 1;
                     arg_end = arg_start;
                     continue;
