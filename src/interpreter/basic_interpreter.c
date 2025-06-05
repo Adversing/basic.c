@@ -1,5 +1,89 @@
 #include "basic_interpreter.h"
 
+// lookup tables
+typedef struct cl_t {
+    const char *name;
+    Command cmd;
+} CommandLookup;
+
+typedef struct ol_t {
+    const char *name;
+    Operator op;
+} OperatorLookup;
+
+typedef struct fl_t {
+    const char *name;
+    Function func;
+} FunctionLookup;
+
+static const CommandLookup command_table[] = {
+    {"PRINT", CMD_PRINT},
+    {"LET", CMD_LET},
+    {"INPUT", CMD_INPUT},
+    {"IF", CMD_IF},
+    {"THEN", CMD_THEN},
+    {"ELSE", CMD_ELSE},
+    {"GOTO", CMD_GOTO},
+    {"GOSUB", CMD_GOSUB},
+    {"RETURN", CMD_RETURN},
+    {"FOR", CMD_FOR},
+    {"TO", CMD_TO},
+    {"STEP", CMD_STEP},
+    {"NEXT", CMD_NEXT},
+    {"END", CMD_END},
+    {"REM", CMD_REM},
+    {"DATA", CMD_DATA},
+    {"READ", CMD_READ},
+    {"RESTORE", CMD_RESTORE},
+    {"DIM", CMD_DIM},
+    {"DEF", CMD_DEF},
+    {"ON", CMD_ON},
+    {"STOP", CMD_STOP},
+    {"RUN", CMD_RUN},
+    {"LIST", CMD_LIST},
+    {"NEW", CMD_NEW},
+    {"CLEAR", CMD_CLEAR},
+    {NULL, CMD_UNKNOWN}
+};
+
+static const OperatorLookup operator_table[] = {
+    {"+", OP_PLUS},
+    {"-", OP_MINUS},
+    {"*", OP_MULTIPLY},
+    {"/", OP_DIVIDE},
+    {"^", OP_POWER},
+    {"MOD", OP_MOD},
+    {"=", OP_EQUAL},
+    {"<>", OP_NOT_EQUAL},
+    {"<", OP_LESS},
+    {"<=", OP_LESS_EQUAL},
+    {">", OP_GREATER},
+    {">=", OP_GREATER_EQUAL},
+    {"AND", OP_AND},
+    {"OR", OP_OR},
+    {"NOT", OP_NOT},
+    {NULL, OP_UNKNOWN}
+};
+
+static const FunctionLookup function_table[] = {
+    {"ABS", FUNC_ABS},
+    {"SIN", FUNC_SIN},
+    {"COS", FUNC_COS},
+    {"TAN", FUNC_TAN},
+    {"SQR", FUNC_SQR},
+    {"INT", FUNC_INT},
+    {"RND", FUNC_RND},
+    {"LEN", FUNC_LEN},
+    {"LEFT$", FUNC_LEFT},
+    {"RIGHT$", FUNC_RIGHT},
+    {"MID$", FUNC_MID},
+    {"VAL", FUNC_VAL},
+    {"STR$", FUNC_STR},
+    {"CHR$", FUNC_CHR},
+    {"ASC", FUNC_ASC},
+    {NULL, FUNC_UNKNOWN}
+};
+
 void init_interpreter(Interpreter *interp) {
     if (!interp) return;
     
@@ -103,74 +187,33 @@ void cleanup_value(Value *value) {
 Command get_command(const char *text) {
     if (!text) return CMD_UNKNOWN;
     
-    if (strcasecmp(text, "PRINT") == 0) return CMD_PRINT;
-    if (strcasecmp(text, "LET") == 0) return CMD_LET;
-    if (strcasecmp(text, "INPUT") == 0) return CMD_INPUT;
-    if (strcasecmp(text, "IF") == 0) return CMD_IF;
-    if (strcasecmp(text, "THEN") == 0) return CMD_THEN;
-    if (strcasecmp(text, "ELSE") == 0) return CMD_ELSE;
-    if (strcasecmp(text, "GOTO") == 0) return CMD_GOTO;
-    if (strcasecmp(text, "GOSUB") == 0) return CMD_GOSUB;
-    if (strcasecmp(text, "RETURN") == 0) return CMD_RETURN;
-    if (strcasecmp(text, "FOR") == 0) return CMD_FOR;
-    if (strcasecmp(text, "TO") == 0) return CMD_TO;
-    if (strcasecmp(text, "STEP") == 0) return CMD_STEP;
-    if (strcasecmp(text, "NEXT") == 0) return CMD_NEXT;
-    if (strcasecmp(text, "END") == 0) return CMD_END;
-    if (strcasecmp(text, "REM") == 0) return CMD_REM;
-    if (strcasecmp(text, "DATA") == 0) return CMD_DATA;
-    if (strcasecmp(text, "READ") == 0) return CMD_READ;
-    if (strcasecmp(text, "RESTORE") == 0) return CMD_RESTORE;
-    if (strcasecmp(text, "DIM") == 0) return CMD_DIM;
-    if (strcasecmp(text, "DEF") == 0) return CMD_DEF;
-    if (strcasecmp(text, "ON") == 0) return CMD_ON;
-    if (strcasecmp(text, "STOP") == 0) return CMD_STOP;
-    if (strcasecmp(text, "RUN") == 0) return CMD_RUN;
-    if (strcasecmp(text, "LIST") == 0) return CMD_LIST;
-    if (strcasecmp(text, "NEW") == 0) return CMD_NEW;
-    if (strcasecmp(text, "CLEAR") == 0) return CMD_CLEAR;
+    for (int i = 0; command_table[i].name != NULL; i++) {
+        if (strcasecmp(text, command_table[i].name) == 0) {
+            return command_table[i].cmd;
+        }
+    }
     return CMD_UNKNOWN;
 }
 
 Operator get_operator(const char *text) {
     if (!text) return OP_UNKNOWN;
     
-    if (strcmp(text, "+") == 0) return OP_PLUS;
-    if (strcmp(text, "-") == 0) return OP_MINUS;
-    if (strcmp(text, "*") == 0) return OP_MULTIPLY;
-    if (strcmp(text, "/") == 0) return OP_DIVIDE;
-    if (strcmp(text, "^") == 0) return OP_POWER;
-    if (strcasecmp(text, "MOD") == 0) return OP_MOD;
-    if (strcmp(text, "=") == 0) return OP_EQUAL;
-    if (strcmp(text, "<>") == 0) return OP_NOT_EQUAL;
-    if (strcmp(text, "<") == 0) return OP_LESS;
-    if (strcmp(text, "<=") == 0) return OP_LESS_EQUAL;
-    if (strcmp(text, ">") == 0) return OP_GREATER;
-    if (strcmp(text, ">=") == 0) return OP_GREATER_EQUAL;
-    if (strcasecmp(text, "AND") == 0) return OP_AND;
-    if (strcasecmp(text, "OR") == 0) return OP_OR;
-    if (strcasecmp(text, "NOT") == 0) return OP_NOT;
+    for (int i = 0; operator_table[i].name != NULL; i++) {
+        if (strcasecmp(text, operator_table[i].name) == 0) {
+            return operator_table[i].op;
+        }
+    }
     return OP_UNKNOWN;
 }
 
 Function get_function(const char *text) {
     if (!text) return FUNC_UNKNOWN;
     
-    if (strcasecmp(text, "ABS") == 0) return FUNC_ABS;
-    if (strcasecmp(text, "SIN") == 0) return FUNC_SIN;
-    if (strcasecmp(text, "COS") == 0) return FUNC_COS;
-    if (strcasecmp(text, "TAN") == 0) return FUNC_TAN;
-    if (strcasecmp(text, "SQR") == 0) return FUNC_SQR;
-    if (strcasecmp(text, "INT") == 0) return FUNC_INT;
-    if (strcasecmp(text, "RND") == 0) return FUNC_RND;
-    if (strcasecmp(text, "LEN") == 0) return FUNC_LEN;
-    if (strcasecmp(text, "LEFT$") == 0) return FUNC_LEFT;
-    if (strcasecmp(text, "RIGHT$") == 0) return FUNC_RIGHT;
-    if (strcasecmp(text, "MID$") == 0) return FUNC_MID;
-    if (strcasecmp(text, "VAL") == 0) return FUNC_VAL;
-    if (strcasecmp(text, "STR$") == 0) return FUNC_STR;
-    if (strcasecmp(text, "CHR$") == 0) return FUNC_CHR;
-    if (strcasecmp(text, "ASC") == 0) return FUNC_ASC;
+    for (int i = 0; function_table[i].name != NULL; i++) {
+        if (strcasecmp(text, function_table[i].name) == 0) {
+            return function_table[i].func;
+        }
+    }
     return FUNC_UNKNOWN;
 }
 

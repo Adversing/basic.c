@@ -5,6 +5,9 @@ void print_usage() {
     printf("BASIC Interpreter Usage:\n");
     printf("  basic_interpreter <filename>    - Load and run BASIC program from file\n");
     printf("  basic_interpreter               - Interactive mode\n");
+    printf("\nBASIC Syntax:\n");
+    printf("  command                         - Execute immediately\n");
+    printf("  line_number command             - Add to program (use RUN to execute)\n");
     printf("\nSupported BASIC Commands:\n");
     printf("  PRINT expr [, expr] [; expr]    - Print expressions\n");
     printf("  LET var = expr                  - Assign value to variable\n");
@@ -25,8 +28,69 @@ void print_usage() {
     printf("\nSpecial Commands:\n");
     printf("  RUN                             - Run the loaded program\n");
     printf("  LIST                            - List the program lines\n");
-    printf("  NEW                             - Clear the current program\n");
+    printf("  VARS                            - Show variables in memory\n");
+    printf("  NEW                             - Clear program and variables\n");
     printf("  QUIT or EXIT                    - Exit the interpreter\n");
+    printf("\nExamples:\n");
+    printf("  LET A = 5                       - Execute immediately, A=5 in memory\n");
+    printf("  10 LET B = 10                   - Add to program line 10\n");
+    printf("  20 PRINT B                      - Add to program line 20\n");
+    printf("  RUN                             - Execute program (creates B=10)\n");
+}
+
+void show_variables(Interpreter *interp) {
+    if (interp->variable_count == 0) {
+        printf("No variables defined\n");
+        return;
+    }
+    
+    printf("Defined variables:\n");
+    for (int i = 0; i < interp->variable_count; i++) {
+        Variable *var = &interp->variables[i];
+        printf("  %s = ", var->name);
+        if (var->value.type == VALUE_NUMBER) {
+            printf("%.6g\n", var->value.data.number);
+        } else if (var->value.type == VALUE_STRING && var->value.data.string) {
+            printf("\"%s\"\n", var->value.data.string);
+        } else {
+            printf("(undefined)\n");
+        }
+    }
+}
+
+int is_valid_immediate_command(const char *trimmed) {
+    int token_count;
+    Token *tokens = tokenize(trimmed, &token_count);
+    
+    if (!tokens || token_count == 0) {
+        return 0;
+    }
+    
+    int valid = 0;
+    if (tokens[0].type == TOKEN_COMMAND) {
+        switch (tokens[0].command) {
+            case CMD_PRINT:
+            case CMD_LET:
+            case CMD_INPUT:
+                valid = 1;
+                break;
+            default:
+                valid = 0;
+                break;
+        }
+    }
+    
+    if (tokens) {
+        for (int i = 0; i < token_count; i++) {
+            if (tokens[i].text) {
+                free(tokens[i].text);
+            }
+            cleanup_value(&tokens[i].value);
+        }
+        free(tokens);
+    }
+    
+    return valid;
 }
 
 void interactive_mode() {
@@ -76,30 +140,63 @@ void interactive_mode() {
                 }
             }
             continue;
+        } else if (strcasecmp(trimmed, "VARS") == 0) {
+            show_variables(&interp);
+            continue;
         } else if (strcasecmp(trimmed, "NEW") == 0) {
             cleanup_interpreter(&interp);
             init_interpreter(&interp);
             printf("Program cleared\n");
             continue;
+        } else if (strncasecmp(trimmed, "DEBUG ", 6) == 0) {
+            char *expr = trimmed + 6;
+            int token_count;
+            Token *tokens = tokenize(expr, &token_count);
+            if (tokens && token_count > 0) {
+                printf("Tokenization of '%s':\n", expr);
+                for (int i = 0; i < token_count; i++) {
+                    printf("  [%d] Type: ", i);
+                    switch (tokens[i].type) {
+                        case TOKEN_NUMBER: printf("NUMBER"); break;
+                        case TOKEN_STRING: printf("STRING"); break;
+                        case TOKEN_VARIABLE: printf("VARIABLE"); break;
+                        case TOKEN_COMMAND: printf("COMMAND"); break;
+                        case TOKEN_OPERATOR: printf("OPERATOR"); break;
+                        case TOKEN_FUNCTION: printf("FUNCTION"); break;
+                        case TOKEN_DELIMITER: printf("DELIMITER"); break;
+                        default: printf("UNKNOWN"); break;
+                    }
+                    printf(" Text: '%s'\n", tokens[i].text ? tokens[i].text : "NULL");
+                }
+                cleanup_tokens(tokens, token_count);
+            } else {
+                printf("Failed to tokenize expression\n");
+            }
+            continue;
         }
         
         if (!isdigit(trimmed[0])) {
-            int token_count;
-            Token *tokens = tokenize(trimmed, &token_count);
-            if (tokens && token_count > 0) {
-                if (!execute_line_tokens(&interp, tokens, token_count, 0)) {
-                    printf("Error executing command\n");
-                }
-                
-                for (int i = 0; i < token_count; i++) {
-                    if (tokens[i].text) {
-                        free(tokens[i].text);
+            if (is_valid_immediate_command(trimmed)) {
+                int token_count;
+                Token *tokens = tokenize(trimmed, &token_count);
+                if (tokens && token_count > 0) {
+                    if (!execute_line_tokens(&interp, tokens, token_count, 0)) {
+                        printf("Error executing command\n");
                     }
-                    cleanup_value(&tokens[i].value);
+                    
+                    for (int i = 0; i < token_count; i++) {
+                        if (tokens[i].text) {
+                            free(tokens[i].text);
+                        }
+                        cleanup_value(&tokens[i].value);
+                    }
+                    free(tokens);
+                } else {
+                    printf("Syntax error\n");
                 }
-                free(tokens);
             } else {
-                printf("Syntax error\n");
+                printf("Unknown command: %s\n", trimmed);
+                printf("Type 'HELP' for available commands\n");
             }
         } else {
             if (!parse_line(&interp, trimmed)) {

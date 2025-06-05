@@ -86,7 +86,7 @@ Token *tokenize(const char *text, int *token_count) {
                 }
             }
             ptr++;
-        } else if (isalpha(*ptr)) { // identifiers (commands, functions, variables)
+        } else if (isalpha(*ptr)) { // identifiers (commands, functions, variables, operators)
             const char *start = ptr;
             while (isalnum(*ptr) || *ptr == '$' || *ptr == '_') ptr++;
 
@@ -97,19 +97,27 @@ Token *tokenize(const char *text, int *token_count) {
                     strncpy(token->text, start, len);
                     token->text[len] = '\0';
 
-                    // check if it's a command
+                    // check if it's a command first
                     const Command cmd = get_command(token->text);
                     if (cmd != CMD_UNKNOWN) {
                         token->type = TOKEN_COMMAND;
                         token->command = cmd;
                     } else {
-                        // check if it's a function
-                        const Function func = get_function(token->text);
-                        if (func != FUNC_UNKNOWN) {
-                            token->type = TOKEN_FUNCTION;
-                            token->function = func;
+                        // check if it's an operator (MOD, AND, OR, NOT)
+                        const Operator op = get_operator(token->text);
+                        if (op != OP_UNKNOWN) {
+                            token->type = TOKEN_OPERATOR;
+                            token->operator = op;
                         } else {
-                            token->type = TOKEN_VARIABLE;
+                            // check if it's a function
+                            const Function func = get_function(token->text);
+                            if (func != FUNC_UNKNOWN) {
+                                token->type = TOKEN_FUNCTION;
+                                token->function = func;
+                            } else {
+                                // default to variable
+                                token->type = TOKEN_VARIABLE;
+                            }
                         }
                     }
                 }

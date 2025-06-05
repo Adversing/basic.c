@@ -2,22 +2,32 @@
 
 int get_precedence(const Operator op) {
     switch (op) {
-        case OP_OR: return 1;
-        case OP_AND: return 2;
-        case OP_NOT: return 3;
+        case OP_OR: 
+            return 1;
+        case OP_AND: 
+            return 2;
+        case OP_NOT: 
+            return 3;
         case OP_EQUAL:
         case OP_NOT_EQUAL:
         case OP_LESS:
         case OP_LESS_EQUAL:
         case OP_GREATER:
-        case OP_GREATER_EQUAL: return 4;
+        case OP_GREATER_EQUAL: 
+            return 4;
         case OP_PLUS:
-        case OP_MINUS: return 5;
+        case OP_MINUS: 
+            return 5;
         case OP_MULTIPLY:
         case OP_DIVIDE:
-        case OP_MOD: return 6;
-        case OP_POWER: return 7;
-        default: return 0;
+        case OP_MOD: 
+            return 6;
+        case OP_POWER: 
+            return 7;
+        case OP_ASSIGN:
+        case OP_UNKNOWN:
+        default: 
+            return 0;
     }
 }
 
@@ -39,24 +49,32 @@ Value apply_operator(Interpreter *interp, Value left, Operator op, Value right) 
 
     // string ops
     if (left.type == VALUE_STRING || right.type == VALUE_STRING) {
-        if (op == OP_PLUS && left.type == VALUE_STRING && right.type == VALUE_STRING) {
-            // "str1" + "str2"
-            size_t left_len = strlen(left.data.string);
-            size_t right_len = strlen(right.data.string);
-            char *concat = malloc(left_len + right_len + 1);
-            if (concat) {
-                strcpy(concat, left.data.string);
-                strcat(concat, right.data.string);
-                result = create_string_value(concat);
-                free(concat);
-            } else {
-                print_error(interp, "Memory allocation failed");
-            }
-        } else if (op == OP_EQUAL && left.type == VALUE_STRING && right.type == VALUE_STRING) {
-            // "str1" = "str2"
-            result.data.number = strcmp(left.data.string, right.data.string) == 0 ? 1 : 0;
-        } else {
-            print_error(interp, "Invalid string operation");
+        switch (op) {
+            case OP_PLUS:
+                if (left.type == VALUE_STRING && right.type == VALUE_STRING) {
+                    // "str1" + "str2"
+                    size_t left_len = strlen(left.data.string);
+                    size_t right_len = strlen(right.data.string);
+                    char *concat = malloc(left_len + right_len + 1);
+                    if (concat) {
+                        strcpy(concat, left.data.string);
+                        strcat(concat, right.data.string);
+                        result = create_string_value(concat);
+                        free(concat);
+                    } else {
+                        print_error(interp, "Memory allocation failed");
+                    }
+                }
+                break;
+            case OP_EQUAL:
+                if (left.type == VALUE_STRING && right.type == VALUE_STRING) {
+                    // "str1" = "str2"
+                    result.data.number = strcmp(left.data.string, right.data.string) == 0 ? 1 : 0;
+                }
+                break;
+            default:
+                print_error(interp, "Invalid string operation");
+                break;
         }
         cleanup_value(&left);
         cleanup_value(&right);
@@ -297,9 +315,38 @@ Value evaluate_expression(Interpreter *interp, Token *tokens, int start, int end
                     return create_number_value(var->value.data.number);
                 }
             }
+            case TOKEN_COMMAND:
+            case TOKEN_OPERATOR:
+            case TOKEN_FUNCTION:
+            case TOKEN_DELIMITER:
+            case TOKEN_EOF:
+            case TOKEN_ERROR:
             default:
                 print_error(interp, "Invalid expression");
                 return result;
+        }
+    }
+
+    // unary ops
+    if (start < end && tokens[start].type == TOKEN_OPERATOR) {
+        if (tokens[start].operator == OP_NOT) {
+            Value operand = evaluate_expression(interp, tokens, start + 1, end);
+            if (operand.type == VALUE_NUMBER) {
+                result.data.number = (operand.data.number == 0) ? 1 : 0;
+            } else {
+                print_error(interp, "NOT operator requires numeric operand");
+            }
+            cleanup_value(&operand);
+            return result;
+        } else if (tokens[start].operator == OP_MINUS) {
+            Value operand = evaluate_expression(interp, tokens, start + 1, end);
+            if (operand.type == VALUE_NUMBER) {
+                result.data.number = -operand.data.number;
+            } else {
+                print_error(interp, "Unary minus requires numeric operand");
+            }
+            cleanup_value(&operand);
+            return result;
         }
     }
 
@@ -328,7 +375,7 @@ Value evaluate_expression(Interpreter *interp, Token *tokens, int start, int end
             paren_level--;
         } else if (paren_level == 0 && tokens[i].type == TOKEN_OPERATOR) {
             const int precedence = get_precedence(tokens[i].operator);
-            if (precedence <= min_precedence) {
+            if (precedence > 0 && precedence <= min_precedence) {
                 min_precedence = precedence;
                 op_pos = i;
             }
@@ -347,38 +394,69 @@ Value evaluate_expression(Interpreter *interp, Token *tokens, int start, int end
         Value args[10];
         int arg_count = 0;
 
+        if (func == FUNC_RND && start == end) {
+            result.data.number = (double)rand() / RAND_MAX;
+            return result;
+        }
+
         // func(args) parsing
         if (start + 1 <= end && tokens[start + 1].type == TOKEN_DELIMITER &&
             strcmp(tokens[start + 1].text, "(") == 0) {
-            int arg_start = start + 2;
-            int arg_end = arg_start;
-            paren_level = 0;
-
-            for (int i = arg_start; i <= end; i++) {
+            
+            int closing_paren = -1;
+            int paren_level = 0;
+            for (int i = start + 1; i <= end; i++) {
                 if (tokens[i].type == TOKEN_DELIMITER && strcmp(tokens[i].text, "(") == 0) {
                     paren_level++;
                 } else if (tokens[i].type == TOKEN_DELIMITER && strcmp(tokens[i].text, ")") == 0) {
+                    paren_level--;
                     if (paren_level == 0) {
-                        if (arg_end > arg_start && arg_count < 10) {
-                            args[arg_count++] = evaluate_expression(interp, tokens, arg_start, arg_end - 1);
-                        }
+                        closing_paren = i;
                         break;
                     }
-                    paren_level--;
-                } else if (paren_level == 0 && tokens[i].type == TOKEN_DELIMITER &&
-                          strcmp(tokens[i].text, ",") == 0) {
-                    if (arg_count < 10) {
-                        args[arg_count++] = evaluate_expression(interp, tokens, arg_start, arg_end - 1);
-                    }
-                    arg_start = i + 1;
-                    arg_end = arg_start;
-                    continue;
                 }
-                arg_end = i + 1;
             }
-        }
+            
+            if (closing_paren == -1) {
+                print_error(interp, "Missing closing parenthesis in function call");
+                return result;
+            }
+            
+            if (closing_paren > start + 2) {
+                int arg_start = start + 2;
+                int arg_end = arg_start;
+                paren_level = 0;
 
-        return apply_function(interp, func, args, arg_count);
+                for (int i = arg_start; i < closing_paren; i++) {
+                    if (tokens[i].type == TOKEN_DELIMITER && strcmp(tokens[i].text, "(") == 0) {
+                        paren_level++;
+                    } else if (tokens[i].type == TOKEN_DELIMITER && strcmp(tokens[i].text, ")") == 0) {
+                        paren_level--;
+                    } else if (paren_level == 0 && tokens[i].type == TOKEN_DELIMITER &&
+                              strcmp(tokens[i].text, ",") == 0) {
+                        if (arg_count < 10) {
+                            args[arg_count++] = evaluate_expression(interp, tokens, arg_start, i - 1);
+                        }
+                        arg_start = i + 1;
+                        arg_end = arg_start;
+                        continue;
+                    }
+                    arg_end = i + 1;
+                }
+                
+                if (arg_count < 10) {
+                    args[arg_count++] = evaluate_expression(interp, tokens, arg_start, closing_paren - 1);
+                }
+            }
+            
+            return apply_function(interp, func, args, arg_count);
+        } else if (func == FUNC_RND) {
+            result.data.number = (double)rand() / RAND_MAX;
+            return result;
+        } else {
+            print_error(interp, "Function call requires parentheses");
+            return result;
+        }
     }
 
     print_error(interp, "Invalid expression");
