@@ -35,10 +35,10 @@ A comprehensive (and small) BASIC language interpreter implementation in C that 
 ### Command Line
 ```bash
 # Run a BASIC program from file
-basic_interpreter program.bas
+basic.exe program.bas
 
 # Start interactive mode
-basic_interpreter
+basic.exe
 ```
 
 ### Interactive Mode Commands
