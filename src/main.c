@@ -39,6 +39,8 @@ void print_usage() {
 }
 
 void show_variables(Interpreter *interp) {
+    if (!interp) return;
+    
     if (interp->variable_count == 0) {
         printf("No variables defined\n");
         return;
@@ -59,6 +61,8 @@ void show_variables(Interpreter *interp) {
 }
 
 int is_valid_immediate_command(const char *trimmed) {
+    if (!trimmed) return 0;
+    
     int token_count;
     Token *tokens = tokenize(trimmed, &token_count);
     
@@ -78,18 +82,11 @@ int is_valid_immediate_command(const char *trimmed) {
                 valid = 0;
                 break;
         }
+    } else if (tokens[0].type == TOKEN_VARIABLE) {
+        valid = 1;
     }
     
-    if (tokens) {
-        for (int i = 0; i < token_count; i++) {
-            if (tokens[i].text) {
-                free(tokens[i].text);
-            }
-            cleanup_value(&tokens[i].value);
-        }
-        free(tokens);
-    }
-    
+    cleanup_tokens(tokens, token_count);
     return valid;
 }
 
@@ -103,6 +100,8 @@ void interactive_mode() {
     char input[MAX_LINE_LENGTH];
     while (1) {
         printf("READY\n");
+        fflush(stdout);
+        
         if (!fgets(input, sizeof(input), stdin)) {
             break;
         }
@@ -114,6 +113,8 @@ void interactive_mode() {
         while (isspace(*trimmed)) trimmed++;
         if (!*trimmed) continue;
         
+        strcpy(interp.error_message, "");
+        
         if (strcasecmp(trimmed, "QUIT") == 0 || strcasecmp(trimmed, "EXIT") == 0) {
             break;
         } else if (strcasecmp(trimmed, "HELP") == 0) {
@@ -121,13 +122,15 @@ void interactive_mode() {
             continue;
         } else if (strcasecmp(trimmed, "RUN") == 0) {
             if (interp.line_count == 0) {
-                printf("No program loaded. Use 'NEW' to clear and start fresh.\n");
+                printf("No program loaded. Use line numbers to add program lines.\n");
                 continue;
             }
 
             printf("Running program...\n");
             if (!execute_program(&interp)) {
-                printf("Program execution failed\n");
+                if (strlen(interp.error_message) == 0) {
+                    printf("Program execution failed\n");
+                }
             }
             continue;
         } else if (strcasecmp(trimmed, "LIST") == 0) {
@@ -181,16 +184,11 @@ void interactive_mode() {
                 Token *tokens = tokenize(trimmed, &token_count);
                 if (tokens && token_count > 0) {
                     if (!execute_line_tokens(&interp, tokens, token_count, 0)) {
-                        printf("Error executing command\n");
-                    }
-                    
-                    for (int i = 0; i < token_count; i++) {
-                        if (tokens[i].text) {
-                            free(tokens[i].text);
+                        if (strlen(interp.error_message) == 0) {
+                            printf("Error executing command\n");
                         }
-                        cleanup_value(&tokens[i].value);
                     }
-                    free(tokens);
+                    cleanup_tokens(tokens, token_count);
                 } else {
                     printf("Syntax error\n");
                 }
@@ -200,7 +198,9 @@ void interactive_mode() {
             }
         } else {
             if (!parse_line(&interp, trimmed)) {
-                printf("Syntax error\n");
+                if (strlen(interp.error_message) == 0) {
+                    printf("Syntax error\n");
+                }
                 continue;
             }
             
@@ -220,7 +220,7 @@ void interactive_mode() {
 }
 
 int main(int argc, char** argv) {
-    srand(time(NULL));
+    srand((unsigned int)time(NULL));
     
     if (argc == 1) {
         interactive_mode();
@@ -246,7 +246,9 @@ int main(int argc, char** argv) {
     printf("Running program...\n\n");
     
     if (!execute_program(&interp)) {
-        printf("Program execution failed\n");
+        if (strlen(interp.error_message) == 0) {
+            printf("Program execution failed\n");
+        }
         cleanup_interpreter(&interp);
         return 1;
     }

@@ -53,22 +53,20 @@ int execute_print(Interpreter *interp, Token *tokens, int token_count, int start
     }
 
     if (start >= token_count) {
-        printf("\n");
         return 1;
     }
 
     int i = start;
     while (i < token_count) {
-        // try to find the end of the expression
         int expr_end = i;
         int paren_level = 0;
 
         while (expr_end < token_count) {
-            if (tokens[expr_end].type == TOKEN_DELIMITER && strcmp(tokens[expr_end].text, "(") == 0) {
+            if (tokens[expr_end].type == TOKEN_DELIMITER && tokens[expr_end].text && strcmp(tokens[expr_end].text, "(") == 0) {
                 paren_level++;
-            } else if (tokens[expr_end].type == TOKEN_DELIMITER && strcmp(tokens[expr_end].text, ")") == 0) {
+            } else if (tokens[expr_end].type == TOKEN_DELIMITER && tokens[expr_end].text && strcmp(tokens[expr_end].text, ")") == 0) {
                 paren_level--;
-            } else if (paren_level == 0 && tokens[expr_end].type == TOKEN_DELIMITER &&
+            } else if (paren_level == 0 && tokens[expr_end].type == TOKEN_DELIMITER && tokens[expr_end].text &&
                       (strcmp(tokens[expr_end].text, ",") == 0 || strcmp(tokens[expr_end].text, ";") == 0)) {
                 break;
             }
@@ -86,7 +84,7 @@ int execute_print(Interpreter *interp, Token *tokens, int token_count, int start
         }
 
         // separator block
-        if (expr_end < token_count && tokens[expr_end].type == TOKEN_DELIMITER) {
+        if (expr_end < token_count && tokens[expr_end].type == TOKEN_DELIMITER && tokens[expr_end].text) {
             if (strcmp(tokens[expr_end].text, ",") == 0) {
                 printf("\t");
             } else if (strcmp(tokens[expr_end].text, ";") == 0) {
@@ -98,7 +96,6 @@ int execute_print(Interpreter *interp, Token *tokens, int token_count, int start
         }
     }
 
-    printf("\n");
     return 1;
 }
 
@@ -142,7 +139,7 @@ int execute_input(Interpreter *interp, Token *tokens, int token_count, int start
         }
         var_start = start + 1;
         if (var_start < token_count && tokens[var_start].type == TOKEN_DELIMITER &&
-            strcmp(tokens[var_start].text, ";") == 0) {
+            tokens[var_start].text && strcmp(tokens[var_start].text, ";") == 0) {
             var_start++;
         }
     }
@@ -211,7 +208,8 @@ int execute_if(Interpreter *interp, Token *tokens, int token_count, int start) {
                 int line_num = (int)tokens[then_pos + 1].value.data.number;
                 int line_index = find_line_by_number(interp, line_num);
                 if (line_index != -1) {
-                    interp->current_line = line_index + 1;
+                    interp->current_line = line_index - 1; // -1 because execute_program will increment
+                    return 1;
                 } else {
                     print_error(interp, "Line number not found");
                     return 0;
@@ -316,7 +314,7 @@ int execute_for(Interpreter *interp, Token *tokens, int token_count, int start) 
     loop->start = start_val.data.number;
     loop->end = end_val.data.number;
     loop->step = step;
-    loop->line_index = interp->current_line - 1;
+    loop->line_index = interp->current_line;
 
     cleanup_value(&start_val);
     cleanup_value(&end_val);
@@ -349,10 +347,9 @@ int execute_next(Interpreter *interp) {
     }
 
     if (continue_loop) {
-        // jmp back to FOR line
-        interp->current_line = loop->line_index + 1;
+        interp->current_line = loop->line_index;
     } else {
-        // pop FOR stack
+        // pop FOR stack (loop is complete)
         interp->for_stack_top--;
     }
 
@@ -386,12 +383,12 @@ int execute_line_tokens(Interpreter *interp, Token *tokens, int token_count, int
                 int line_num = (int)tokens[start + 1].value.data.number;
                 int line_index = find_line_by_number(interp, line_num);
                 if (line_index != -1) {
-                    interp->current_line = line_index + 1;
+                    interp->current_line = line_index - 1;
+                    return 1;
                 } else {
                     print_error(interp, "Line number not found");
                     return 0;
                 }
-                return 1;
             }
             case CMD_GOSUB: {
                 if (start + 1 >= token_count || tokens[start + 1].type != TOKEN_NUMBER) {
@@ -404,18 +401,18 @@ int execute_line_tokens(Interpreter *interp, Token *tokens, int token_count, int
                     return 0;
                 }
 
-                // push return address
-                interp->gosub_stack[++interp->gosub_stack_top].return_line = interp->current_line;
+                // push return address (next line after current)
+                interp->gosub_stack[++interp->gosub_stack_top].return_line = interp->current_line + 1;
 
                 int line_num = (int)tokens[start + 1].value.data.number;
                 int line_index = find_line_by_number(interp, line_num);
                 if (line_index != -1) {
-                    interp->current_line = line_index + 1;
+                    interp->current_line = line_index - 1;
+                    return 1;
                 } else {
                     print_error(interp, "Line number not found");
                     return 0;
                 }
-                return 1;
             }
             case CMD_RETURN: {
                 if (interp->gosub_stack_top < 0) {
@@ -423,7 +420,7 @@ int execute_line_tokens(Interpreter *interp, Token *tokens, int token_count, int
                     return 0;
                 }
 
-                interp->current_line = interp->gosub_stack[interp->gosub_stack_top--].return_line;
+                interp->current_line = interp->gosub_stack[interp->gosub_stack_top--].return_line - 1;
                 return 1;
             }
             case CMD_END:

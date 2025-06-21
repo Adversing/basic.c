@@ -26,6 +26,9 @@ Token *tokenize(const char *text, int *token_count) {
         token->type = TOKEN_ERROR;
         token->value.type = VALUE_NUMBER;
         token->value.data.number = 0;
+        token->command = CMD_UNKNOWN;
+        token->operator = OP_UNKNOWN;
+        token->function = FUNC_UNKNOWN;
 
         if (isdigit(*ptr) || (*ptr == '.' && isdigit(*(ptr + 1)))) { // numbers block
             const char *start = ptr;
@@ -44,23 +47,61 @@ Token *tokenize(const char *text, int *token_count) {
             }
         } else if (*ptr == '"') { // string literals
             ptr++; // skip opening quote
-            const char *start = ptr;
-            while (*ptr && *ptr != '"') ptr++;
+            
+            char temp_buffer[MAX_LINE_LENGTH];
+            int temp_len = 0;
+            
+            while (*ptr && *ptr != '"' && temp_len < MAX_LINE_LENGTH - 1) {
+                if (*ptr == '\\' && *(ptr + 1)) {
+                    switch (*(ptr + 1)) {
+                        case 'n':
+                            temp_buffer[temp_len++] = '\n';
+                            ptr += 2;
+                            break;
+                        case 't':
+                            temp_buffer[temp_len++] = '\t';
+                            ptr += 2;
+                            break;
+                        case 'r':
+                            temp_buffer[temp_len++] = '\r';
+                            ptr += 2;
+                            break;
+                        case '\\':
+                            temp_buffer[temp_len++] = '\\';
+                            ptr += 2;
+                            break;
+                        case '"':
+                            temp_buffer[temp_len++] = '"';
+                            ptr += 2;
+                            break;
+                        case '\'':
+                            temp_buffer[temp_len++] = '\'';
+                            ptr += 2;
+                            break;
+                        default:
+                            temp_buffer[temp_len++] = *ptr++;
+                            break;
+                    }
+                } else {
+                    temp_buffer[temp_len++] = *ptr++;
+                }
+            }
 
             if (*ptr != '"') {
                 token->type = TOKEN_ERROR;
+                (*token_count)--; 
                 continue;
             }
 
-            int len = ptr - start;
-            token->text = malloc(len + 1);
+            temp_buffer[temp_len] = '\0';
+            
+            token->text = malloc(temp_len + 1);
             if (token->text) {
-                strncpy(token->text, start, len);
-                token->text[len] = '\0';
-
+                strcpy(token->text, temp_buffer);
                 token->type = TOKEN_STRING;
-                token->value = create_string_value(token->text);
+                token->value = create_string_value(temp_buffer);
             }
+            
             ptr++; // skip closing quote
         } else if (strncmp(ptr, "<=", 2) == 0 || strncmp(ptr, ">=", 2) == 0 ||
                  strncmp(ptr, "<>", 2) == 0) {
@@ -78,7 +119,7 @@ Token *tokenize(const char *text, int *token_count) {
                 token->text[0] = *ptr;
                 token->text[1] = '\0';
 
-                if (strchr("(),;:", *ptr)) {
+                if (strchr("(),:;", *ptr)) {
                     token->type = TOKEN_DELIMITER;
                 } else {
                     token->type = TOKEN_OPERATOR;
@@ -123,10 +164,12 @@ Token *tokenize(const char *text, int *token_count) {
                 }
             } else {
                 // identifier too long, skip it
+                (*token_count)--; 
                 continue;
             }
         } else {
             // unknown character, skip it
+            (*token_count)--; 
             ptr++;
         }
     }

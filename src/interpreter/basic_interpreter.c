@@ -84,6 +84,56 @@ static const FunctionLookup function_table[] = {
     {NULL, FUNC_UNKNOWN}
 };
 
+char* process_escape_sequences(const char* input) {
+    if (!input) return NULL;
+    
+    size_t len = strlen(input);
+    char* result = malloc(len + 1);
+    if (!result) return NULL;
+    
+    const char* src = input;
+    char* dst = result;
+    
+    while (*src) {
+        if (*src == '\\' && *(src + 1)) {
+            switch (*(src + 1)) {
+                case 'n':
+                    *dst++ = '\n';
+                    src += 2;
+                    break;
+                case 't':
+                    *dst++ = '\t';
+                    src += 2;
+                    break;
+                case 'r':
+                    *dst++ = '\r';
+                    src += 2;
+                    break;
+                case '\\':
+                    *dst++ = '\\';
+                    src += 2;
+                    break;
+                case '"':
+                    *dst++ = '"';
+                    src += 2;
+                    break;
+                case '\'':
+                    *dst++ = '\'';
+                    src += 2;
+                    break;
+                default:
+                    *dst++ = *src++;
+                    break;
+            }
+        } else {
+            *dst++ = *src++;
+        }
+    }
+    *dst = '\0';
+    
+    return result;
+}
+
 void init_interpreter(Interpreter *interp) {
     if (!interp) return;
     
@@ -158,11 +208,14 @@ Value create_string_value(const char *string) {
     Value val;
     val.type = VALUE_STRING;
     if (string && strlen(string) > 0) {
-        val.data.string = malloc(strlen(string) + 1);
-        if (val.data.string) {
-            strcpy(val.data.string, string);
+        char* processed = process_escape_sequences(string);
+        if (processed) {
+            val.data.string = processed;
         } else {
-            val.data.string = NULL;
+            val.data.string = malloc(strlen(string) + 1);
+            if (val.data.string) {
+                strcpy(val.data.string, string);
+            }
         }
     } else {
         val.data.string = malloc(1);

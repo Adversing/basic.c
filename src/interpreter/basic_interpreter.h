@@ -185,4 +185,6 @@ int find_line_by_number(Interpreter *interp, int line_number);
 void print_error(Interpreter *interp, const char *message);
 int execute_line_tokens(Interpreter *interp, Token *token, int token_count, int i);
 
+char* process_escape_sequences(const char* input);
+
 #endif
